@@ -2,8 +2,6 @@
 // You should copy it to another filename to avoid overwriting it.
 
 #include <iostream>
-#include <sstream>
-#include <random>
 #include <thread>
 
 #include <thrift/protocol/TBinaryProtocol.h>
@@ -16,146 +14,66 @@
 #include "rocksdb/db.h"
 #include "rocksdb/slice.h"
 #include "rocksdb/options.h"
+#include "rocksdb/thrift/gen-cpp/Replication.h"
 
-#include "Replication.h"
+#include "replication_master.h"
 
-using namespace ::apache::thrift;
-using namespace ::apache::thrift::protocol;
-using namespace ::apache::thrift::transport;
-using namespace ::apache::thrift::server;
-using namespace ::apache::thrift::concurrency;
 
-using boost::shared_ptr;
-using namespace  ::rocksdb;
+namespace rocksdb {
 
-class ReplicationHandler : virtual public ReplicationIf {
-private:
-    DB *_db;
-public:
-    ReplicationHandler(DB *db) {
-        _db = db;
-    }
-
-    void Update(std::string& _return, const int64_t seq) {
-        if(!_db) throw ReplicationError(0, "Database@Master is not specified.");
-
-        std::unique_ptr<TransactionLogIterator> iter;
-        Status st = _db->GetUpdatesSince(seq, &iter);
-        if(!st.ok()) throw ReplicationError(1, "Invalid sequence number.");
-
-        TransactionLogIterator *tlit = iter.get();
-        BatchResult bres = tlit->GetBatch();
-        WriteBatch *wb   = bres.writeBatchPtr.get();
-        //std::cout << seq << ":" << wb->Data() << std::endl;
-        _return = wb->Data();
-    }
-
-};
-
-class ReplicationMaster {
-private:
-    DB *_db;
-    int _port;
-    TThreadPoolServer *_server;
-
-public:
-    ReplicationMaster(DB* db, int port) {
-        _port = port;
-        _db   = db;
-    }
-
-    void Sync() {
-        _server->serve();
-    }
-    
-    void StartReplication() {
-        shared_ptr<ReplicationHandler> handler(new ReplicationHandler(_db));
-        shared_ptr<TProcessor> processor(new ReplicationProcessor(handler));
-        shared_ptr<TServerTransport> serverTransport(new TServerSocket(_port));
-        shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
-        shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
-        shared_ptr<ThreadManager> threadManager = ThreadManager::newSimpleThreadManager(15);
-        shared_ptr<PosixThreadFactory> threadFactory = shared_ptr<PosixThreadFactory>(new PosixThreadFactory());
-        threadManager->threadFactory(threadFactory);
-        threadManager->start();
-
-        _server = new TThreadPoolServer(processor, serverTransport, transportFactory, protocolFactory, threadManager);
-        std::thread replication_thread = std::thread(&ReplicationMaster::Sync, std::ref(*this));
-        replication_thread.detach();
-    }
-
-    Status StopReplication() {
-        _server->stop();
-        return Status::OK();
-    }
-    
-    ~ReplicationMaster() {
-        StopReplication();
-    }
-    
-};
-
-void dump(DB *master) {
-    Iterator *iter = master->NewIterator(ReadOptions());
-    std::cout << "dump:" << std::endl;
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next())
-        std::cout << iter->key().ToString() << ":" << iter->value().ToString() << std::endl;
+ReplicationHandler::ReplicationHandler(DB *db) {
+    _db = db;
 }
 
-int main(int argc, char **argv) {
-    int port = 9090;
-    DB *master;
-    Options options;
-    options.IncreaseParallelism();
-    options.OptimizeLevelStyleCompaction();
-    options.create_if_missing = true;
-    options.WAL_ttl_seconds = 100000;
-    std::string kDBPath = "/tmp/rocksdb_custom_master";
-    Status st = DB::Open(options, kDBPath, &master);
-    assert(st.ok());
+ReplicationHandler::~ReplicationHandler() { }
 
+void ReplicationHandler::Update(std::string& _return, const int64_t seq) {
+    if(!_db) throw ReplicationError(0, "Database@Master is not specified.");
 
-    std::cout << "last seq:" <<   master->GetLatestSequenceNumber() << std::endl; 
-    std::random_device seed_gen;
-    std::minstd_rand engine(seed_gen());
-    SequenceNumber seq = master->GetLatestSequenceNumber();
-    std::ostringstream oss, oss_;
-    oss << "key" << seq++;
-    oss_ << "value" << engine();
-    st = master->Put(WriteOptions(), oss.str(), oss_.str());
-    assert(st.ok());
-    oss.str("");
-    oss_.str("");
-    oss << "key" << seq++;
-    oss_ << "value" << engine();
-    st = master->Put(WriteOptions(), oss.str(), oss_.str());
-    assert(st.ok());
-    oss.str("");
-    oss_.str("");
-    oss << "key" << seq++;
-    oss_ << "value" << engine();
-    st = master->Put(WriteOptions(), oss.str(), oss_.str());
-    assert(st.ok());
-    oss.str("");
-    oss_.str("");
+    std::unique_ptr<TransactionLogIterator> iter;
+    Status st = _db->GetUpdatesSince(seq, &iter);
+    if(!st.ok()) throw ReplicationError(1, "Invalid sequence number.");
 
-    dump(master);
-
-    ReplicationMaster rep(master, port);
-    rep.StartReplication();
-    while(1) {
-        oss.str("");
-        oss_.str("");
-        oss << "key" << seq++;
-        oss_ << "value" << engine();
-        st = master->Put(WriteOptions(), oss.str(), oss_.str());
-
-        assert(st.ok());
-        sleep(60);
-    }
-
-    rep.StopReplication();
-    
-    return 0;
+    TransactionLogIterator *tlit = iter.get();
+    BatchResult bres = tlit->GetBatch();
+    WriteBatch *wb   = bres.writeBatchPtr.get();
+    //std::cout << seq << ":" << wb->Data() << std::endl;
+    _return = wb->Data();
 }
 
+ReplicationMaster::ReplicationMaster(DB* db, int port) {
+    _port = port;
+    _db   = db;
+}
+
+ReplicationMaster::~ReplicationMaster() {
+    StopReplication();
+}
+
+void ReplicationMaster::Sync() {
+    _server->serve();
+}
+    
+void ReplicationMaster::StartReplication() {
+    boost::shared_ptr<ReplicationHandler> handler(new ReplicationHandler(_db));
+    boost::shared_ptr<apache::thrift::TProcessor> processor(new ReplicationProcessor(handler));
+    boost::shared_ptr<apache::thrift::transport::TServerTransport> serverTransport(new apache::thrift::transport::TServerSocket(_port));
+    boost::shared_ptr<apache::thrift::transport::TTransportFactory> transportFactory(new apache::thrift::transport::TBufferedTransportFactory());
+    boost::shared_ptr<apache::thrift::protocol::TProtocolFactory> protocolFactory(new apache::thrift::protocol::TBinaryProtocolFactory());
+    boost::shared_ptr<apache::thrift::concurrency::ThreadManager> threadManager = apache::thrift::concurrency::ThreadManager::newSimpleThreadManager(15);
+    boost::shared_ptr<apache::thrift::concurrency::PosixThreadFactory> threadFactory = \
+        boost::shared_ptr<apache::thrift::concurrency::PosixThreadFactory>(new apache::thrift::concurrency::PosixThreadFactory());
+    threadManager->threadFactory(threadFactory);
+    threadManager->start();
+
+    _server = new apache::thrift::server::TThreadPoolServer(processor, serverTransport, transportFactory, protocolFactory, threadManager);
+    std::thread replication_thread = std::thread(&ReplicationMaster::Sync, std::ref(*this));
+    replication_thread.detach();
+}
+
+Status ReplicationMaster::StopReplication() {
+    _server->stop();
+    return Status::OK();
+}
+
+} // namespace rocksdb
