@@ -8,37 +8,35 @@
 #include "rocksdb/slice.h"
 #include "rocksdb/options.h"
 
-#include "rocksdb/thrift/gen-cpp/Replication.h"
+#include "./gen-cpp/Replication.h"
 
 namespace rocksdb {
-
+  
 class ReplicationHandler : virtual public ReplicationIf {
-private:
-    DB *_db;
+ private:
+  DB *db;
 
-public:
-    ReplicationHandler(DB *db);
-    ~ReplicationHandler();
-    
-    void Update(std::string& _return, const int64_t seq);
-
-};
+ public:
+  static Status ReplicationHandler(DB *_db);
+  ~ReplicationHandler();
+  Status Update(std::string& _return, const int64_t _seq);
+}; // class ReplicationHandler
 
 class ReplicationMaster {
-private:
-    DB *_db;
-    int _port;
-    apache::thrift::server::TThreadPoolServer *_server;
-
-public:
-    ReplicationMaster(DB* db, int port);
-    ~ReplicationMaster();
-
-    void Sync();
-    void StartReplication();
-    Status StopReplication();
-};
-
+ private:
+  DB *db;
+  int port;
+  apache::thrift::server::TThreadPoolServer *server;
+  
+ public:
+  static Status ReplicationMaster(DB* _db, int _port);
+  ~ReplicationMaster();
+  Status PeriodicalSync();
+  void StopReplication();
+  
+ protected:
+  Status StartReplication();
+}; // class ReplicationMaster
 
 } // namespace rocksdb
 

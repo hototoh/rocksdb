@@ -14,66 +14,89 @@
 #include "rocksdb/db.h"
 #include "rocksdb/slice.h"
 #include "rocksdb/options.h"
-#include "rocksdb/thrift/gen-cpp/Replication.h"
+#include "gen-cpp/Replication.h"
 
 #include "replication_master.h"
 
 
 namespace rocksdb {
 
-ReplicationHandler::ReplicationHandler(DB *db) {
-    _db = db;
+ReplicationHandler::ReplicationHandler(DB *_db) {
+  db = _db;
 }
 
 ReplicationHandler::~ReplicationHandler() { }
 
-void ReplicationHandler::Update(std::string& _return, const int64_t seq) {
-    if(!_db) throw ReplicationError(0, "Database@Master is not specified.");
+Status ReplicationHandler::Update(std::string& _return, const int64_t _seq) {
+  std::unique_ptr<TransactionLogIterator> iter;
+  Status st = _db->GetUpdatesSince(_seq, &iter);
+  if(!st.ok()) {
+    //throw ReplicationError(1, "Invalid sequence number.");
+    
+  }
 
-    std::unique_ptr<TransactionLogIterator> iter;
-    Status st = _db->GetUpdatesSince(seq, &iter);
-    if(!st.ok()) throw ReplicationError(1, "Invalid sequence number.");
-
-    TransactionLogIterator *tlit = iter.get();
-    BatchResult bres = tlit->GetBatch();
-    WriteBatch *wb   = bres.writeBatchPtr.get();
-    //std::cout << seq << ":" << wb->Data() << std::endl;
-    _return = wb->Data();
+  TransactionLogIterator *tlit = iter.get();
+  BatchResult bres = tlit->GetBatch();
+  WriteBatch *wb   = bres.writeBatchPtr.get();
+  //std::cout << _seq << ":" << wb->Data() << std::endl;
+  _return = wb->Data();
+  return Status::OK;
 }
 
-ReplicationMaster::ReplicationMaster(DB* db, int port) {
-    _port = port;
-    _db   = db;
+Status ReplicationMaster::ReplicationMaster(ReplicationMaster* master,
+                                            DB* _db, int _port) {
+  if(!db) return Status::NotFound("DB must be opened");
+  db   = _db;
+  port = _port;
+
+  return StartReplication();
 }
 
 ReplicationMaster::~ReplicationMaster() {
-    StopReplication();
+  StopReplication();
 }
 
-void ReplicationMaster::Sync() {
-    _server->serve();
+Status ReplicationMaster::PeriodicalSync() {
+  server->serve();
+  return Status::OK:
 }
     
-void ReplicationMaster::StartReplication() {
-    boost::shared_ptr<ReplicationHandler> handler(new ReplicationHandler(_db));
-    boost::shared_ptr<apache::thrift::TProcessor> processor(new ReplicationProcessor(handler));
-    boost::shared_ptr<apache::thrift::transport::TServerTransport> serverTransport(new apache::thrift::transport::TServerSocket(_port));
-    boost::shared_ptr<apache::thrift::transport::TTransportFactory> transportFactory(new apache::thrift::transport::TBufferedTransportFactory());
-    boost::shared_ptr<apache::thrift::protocol::TProtocolFactory> protocolFactory(new apache::thrift::protocol::TBinaryProtocolFactory());
-    boost::shared_ptr<apache::thrift::concurrency::ThreadManager> threadManager = apache::thrift::concurrency::ThreadManager::newSimpleThreadManager(15);
-    boost::shared_ptr<apache::thrift::concurrency::PosixThreadFactory> threadFactory = \
-        boost::shared_ptr<apache::thrift::concurrency::PosixThreadFactory>(new apache::thrift::concurrency::PosixThreadFactory());
-    threadManager->threadFactory(threadFactory);
-    threadManager->start();
+Status ReplicationMaster::StartReplication() {
+  using boost::shared_ptr;
+  using namespace apache::thrift;
 
-    _server = new apache::thrift::server::TThreadPoolServer(processor, serverTransport, transportFactory, protocolFactory, threadManager);
-    std::thread replication_thread = std::thread(&ReplicationMaster::Sync, std::ref(*this));
-    replication_thread.detach();
+  shared_ptr<ReplicationHandler> handler(new ReplicationHandler(db));
+  shared_ptr<TProcessor> 
+      processor(new ReplicationProcessor(handler));
+  shared_ptr<transport::TServerTransport> 
+      serverTransport(new transport::TServerSocket(port));    
+  shared_ptr<transport::TTransportFactory> 
+      transportFactory(new transport::TBufferedTransportFactory());
+  shared_ptr<protocol::TProtocolFactory> 
+      protocolFactory(new protocol::TBinaryProtocolFactory());
+  shared_ptr<concurrency::ThreadManager> 
+      threadManager = concurrency::ThreadManager::newSimpleThreadManager(15);
+  shared_ptr<concurrency::PosixThreadFactory> threadFactory = 
+      shared_ptr<concurrency::PosixThreadFactory>
+      (new concurrency::PosixThreadFactory());
+  threadManager->threadFactory(threadFactory);
+  try {
+    threadManager->start();
+  } catch (concurrency::InvalidArgumentException e) {
+    return Status::InvalidArgument("Thrift threadManager error");
+  }
+
+  server = new server::TThreadPoolServer(
+      processor, serverTransport, transportFactory, 
+      protocolFactory, threadManager);
+  auto replication_thread = std::thread(&ReplicationMaster::PeriodicalSync,
+                                               std::ref(*this));
+  replication_thread.detach();
+  return State::OK;
 }
 
-Status ReplicationMaster::StopReplication() {
-    _server->stop();
-    return Status::OK();
+void ReplicationMaster::StopReplication() {
+  server->stop();
 }
 
 } // namespace rocksdb
