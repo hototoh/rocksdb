@@ -17,9 +17,9 @@ class ReplicationHandler : virtual public ReplicationIf {
   DB *db;
 
  public:
-  static Status ReplicationHandler(DB *_db);
+  ReplicationHandler(DB *_db);
   ~ReplicationHandler();
-  Status Update(std::string& _return, const int64_t _seq);
+  void Update(std::string& _return, const int64_t _seq);
 }; // class ReplicationHandler
 
 class ReplicationMaster {
@@ -29,13 +29,14 @@ class ReplicationMaster {
   apache::thrift::server::TThreadPoolServer *server;
   
  public:
-  static Status ReplicationMaster(DB* _db, int _port);
+  static Status Open(ReplicationMaster *master, DB* _db, int _port);
+  ReplicationMaster(DB* _db, int _port);
   ~ReplicationMaster();
-  Status PeriodicalSync();
   void StopReplication();
   
  protected:
   Status StartReplication();
+  void PeriodicalSync();
 }; // class ReplicationMaster
 
 } // namespace rocksdb

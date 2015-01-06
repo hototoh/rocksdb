@@ -27,44 +27,41 @@ ReplicationHandler::ReplicationHandler(DB *_db) {
 
 ReplicationHandler::~ReplicationHandler() { }
 
-Status ReplicationHandler::Update(std::string& _return, const int64_t _seq) {
-  std::unique_ptr<TransactionLogIterator> iter;
+void ReplicationHandler::Update(std::string& _return, const int64_t _seq) {
+  std::unique_ptr<TransactionLogIterator> iter; 
   Status st = _db->GetUpdatesSince(_seq, &iter);
   if(!st.ok()) {
     //throw ReplicationError(1, "Invalid sequence number.");
-    
+    // must return error message to client
+    return 
   }
 
   TransactionLogIterator *tlit = iter.get();
   BatchResult bres = tlit->GetBatch();
   WriteBatch *wb   = bres.writeBatchPtr.get();
-  //std::cout << _seq << ":" << wb->Data() << std::endl;
   _return = wb->Data();
-  return Status::OK;
 }
 
-Status ReplicationMaster::ReplicationMaster(ReplicationMaster* master,
-                                            DB* _db, int _port) {
+Status ReplicationMaster::Open(ReplicationMaster* master, DB* _db, int _port) {
   if(!db) return Status::NotFound("DB must be opened");
+
+  master = new ReplicationMaster(_db, _port);
+  return master.StartReplication();
+}
+
+ReplicationMaster::ReplicationMaster(DB* _db, int _port) {
   db   = _db;
   port = _port;
-
-  return StartReplication();
 }
 
 ReplicationMaster::~ReplicationMaster() {
   StopReplication();
 }
-
-Status ReplicationMaster::PeriodicalSync() {
-  server->serve();
-  return Status::OK:
-}
     
 Status ReplicationMaster::StartReplication() {
   using boost::shared_ptr;
   using namespace apache::thrift;
-
+  
   shared_ptr<ReplicationHandler> handler(new ReplicationHandler(db));
   shared_ptr<TProcessor> 
       processor(new ReplicationProcessor(handler));
@@ -93,6 +90,10 @@ Status ReplicationMaster::StartReplication() {
                                                std::ref(*this));
   replication_thread.detach();
   return State::OK;
+}
+
+void ReplicationMaster::PeriodicalSync() {
+  server->serve();
 }
 
 void ReplicationMaster::StopReplication() {
