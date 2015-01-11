@@ -17,13 +17,12 @@
 # under the License.
 #
 AUTOMAKE_OPTIONS = subdir-objects
-ROCKSDB_DIR = ../../
-#ROCKSDB_DIR = /Users/tkk/dev/rocksdb
+ROCKSDB_DIR = /Users/tkk/dev/rocksdb
 ETC_FLAGS   = -std=c++11 
 MACRO_FLAGS = -DROCKSDB_PLATFORM_POSIX  -DOS_MACOSX -DROCKSDB_ATOMIC_PRESENT -DSNAPPY -DZLIB -DBZIP2
-LINK_FLAGS  = -lsnappy -lz -lbz2 
-HEAD_FLAGS  = -Igen-cpp -I/usr/local/include -I/opt/local/include -I$(ROCKSDB_DIR)/include -I$(top_builddir)/lib/cpp/src 
-LIB_FLAGS   = -L/opt/local/lib -L/opt/local/lib -L/usr/local/lib
+LINK_FLAGS  = -lsnappy -lz -lbz2 -lthrift
+HEAD_FLAGS  = -Igen-cpp -I/usr/local/include -I/opt/local/include -I$(ROCKSDB_DIR)/include -I$(top_builddir)/lib/cpp/src -I$(ROCKSDB_DIR)
+LIB_FLAGS   = -L/opt/local/lib -L/usr/local/lib
 
 AM_CPPFLAGS = $(ETC_FLAGS) $(MACRO_FLAGS) $(HEAD_FLAGS) $(LIB_FLAGS) $(BOOST_CPPFLAGS) $(LIBEVENT_CPPFLAGS) 
 AM_CXXFLAGS = -Wall -I/Users/tkk/dev/rocksdb/include
@@ -32,34 +31,29 @@ AM_LDFLAGS = $(BOOST_LDFLAGS) $(LIBEVENT_LDFLAGS) $(LIB_FLAGS) $(LINK_FLAGS) $(H
 .NOTPARALLEL:
 noinst_LTLIBRARIES = librepgencpp.la
 librepgencpp_la_SOURCES = \
-	gen-cpp/Replication.h \
-	gen-cpp/Replication.cpp \
 	gen-cpp/replication_constants.cpp \
-	gen-cpp/replication_constants.h \
 	gen-cpp/replication_types.cpp \
-	gen-cpp/replication_types.h
-
+	gen-cpp/Replication.cpp 
 
 librepgencpp_la_LDFLAGS = -lthrift
 
 bin_PROGRAMS = \
-	repserver \
-	repclient 
+	repmaster \
+	repslave \
+	replicationtest
 
-repserver_SOURCES = \
+repmaster_CXXFLAGS = -c
+repmaster_SOURCES = replication_master.cc 
+repslave_CXXFLAGS = -c
+repslave_SOURCES = replication_slave.cc
+
+replicationtest_SOURCES = \
 	replication_master.cc \
-	replication_master_test.cc \
-	$(ROCKSDB_DIR)/librocksdb.a
-
-repserver_LDADD = \
-	librepgencpp.la 
-
-repclient_SOURCES = \
 	replication_slave.cc \
-	replication_slave_test.cc \
+	replication_test.cc \
 	$(ROCKSDB_DIR)/librocksdb.a
 
-repclient_LDADD = \
+replicationtest_LDADD = \
 	librepgencpp.la 
 
 # Common thrift code generation rules
