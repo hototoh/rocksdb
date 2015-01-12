@@ -46,11 +46,14 @@ class ReplicationSlave {
  public:
   static Status Open(ReplicationSlave* slave, DB* _db,
                      std::string _master_host, int _port);
+  ReplicationSlave() { }
   ReplicationSlave(DB* _db, std::string _master_host, int _port);
   ~ReplicationSlave();
   Status PeriodicalSync(int sync_interval);
   Status StopReplication();
-  Status StartReplication(int sync_interval);
+  // sync_interval -- millisecond
+  Status StartReplication(int sync_interval = 1000,
+                          bool flush_before_replication = true); 
 
  protected:
   Status GetFile(SessionID& session_id, ReplicationFileInfo& file_info,

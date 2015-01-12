@@ -227,7 +227,7 @@ void ReplicationHandler:: GetFileData(ReplicationFileData& _return,
     throw ReplicationError(ReplicationErrorType::SERVER_ERROR,
                            "Could not skip");
   }
-  s = src_file->Read(transfer_data_size, &data, buf.get());
+  s = src_file->Read(buffer_to_read, &data, buf.get());
   if (!s.ok()) {
     throw ReplicationError(ReplicationErrorType::SERVER_ERROR,
                            "Could read data");
@@ -262,15 +262,16 @@ void ReplicationHandler::PeriodicalUpdate(ReplicationFileData& _return,
 // --- ReplicationMaster methods ------
 
 ReplicationMaster::ReplicationMaster(DB* _db, int _port) {
-  db   = _db;
-  port = _port;
+    db = _db;
+    port = _port;
 }
 
 ReplicationMaster::~ReplicationMaster() {
   StopReplication();
+  delete db;
 }
 
-Status ReplicationMaster::Open(ReplicationMaster* master, DB* _db, int _port) {
+Status ReplicationMaster::Open(ReplicationMaster* master, DB* _db, const int _port) {
   if(!_db) return Status::NotFound("DB must be opened");
 
   master = new ReplicationMaster(_db, _port);

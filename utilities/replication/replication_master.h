@@ -34,7 +34,7 @@ class ReplicationHandler : virtual public ReplicationIf {
   // XXX
   // 60 * 60 * 5
   const int64_t expired_time = 18000;
-  const size_t copy_file_buffer_size = 1048576; // 2 ** 20
+  const int64_t copy_file_buffer_size = 1048576; // 2 ** 20
 
   
   
@@ -70,7 +70,8 @@ class ReplicationMaster {
   apache::thrift::server::TThreadPoolServer* server;  
   
  public:
-  static Status Open(ReplicationMaster* master, DB* _db, int _port);
+  static Status Open(ReplicationMaster* master, DB* _db, const int _port);
+  ReplicationMaster() {}
   ReplicationMaster(DB* _db, int _port);
   ~ReplicationMaster();
   void StopReplication();
