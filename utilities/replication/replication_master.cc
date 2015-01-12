@@ -47,14 +47,14 @@ inline SessionID getNewReplicationID() {
 
 // --- ReplicationHandler methods ------
 
-ReplicationHandler::ReplicationHandler(DB *_db) {
-  db = _db;
-  env = db->GetEnv();  
+ReplicationHandler::ReplicationHandler(DB *_db)
+    : db(_db) {
+  env = db->GetEnv();
 }
 
 ReplicationHandler::~ReplicationHandler() { }
 
-bool ReplicationHandler::NewFileDeletionEntry() {
+bool ReplicationHandler::NewFileDeletionEntry(SessionID& _return) {
   for (int i = 0 ; i < 3; i++) {
     SessionID session_id = getNewReplicationID();
     auto iter = file_deletion_lock_table.find(session_id);
@@ -64,6 +64,7 @@ bool ReplicationHandler::NewFileDeletionEntry() {
       if(!s.ok()) continue;
 
       file_deletion_lock_table.insert(std::make_pair(session_id, timestamp));
+      _return = session_id;
       return true;
     } 
   }
@@ -99,14 +100,17 @@ bool ReplicationHandler::DeleteFileDeletionEntry(const SessionID& session_id) {
 
 void ReplicationHandler::DisableFileDeletions(SessionID& _return) {
   Status s;
+  std::cout << "\t\tDisableFileDeletions" << std::endl;
   s = db->DisableFileDeletions();
+  std::cout << "\t\tDisableFileDeletions" << std::endl;
   if (!s.ok()) {
     db->EnableFileDeletions(false);
     throw ReplicationError(ReplicationErrorType::SERVER_ERROR,
                            "Cannot disabel file deletion in master");
   }
   
-  if(!NewFileDeletionEntry()) {
+  std::cout << "\t\tDisableFileDeletions" << std::endl;
+  if(!NewFileDeletionEntry(_return)) {
     throw ReplicationError(ReplicationErrorType::SERVER_ERROR,
                            "Fail to create new replication ID");
   }
@@ -261,9 +265,9 @@ void ReplicationHandler::PeriodicalUpdate(ReplicationFileData& _return,
 
 // --- ReplicationMaster methods ------
 
-ReplicationMaster::ReplicationMaster(DB* _db, int _port) {
-    db = _db;
-    port = _port;
+ReplicationMaster::ReplicationMaster(DB* _db, int _port)
+    : db(_db),
+      port(_port) {
 }
 
 ReplicationMaster::~ReplicationMaster() {
@@ -271,11 +275,12 @@ ReplicationMaster::~ReplicationMaster() {
   delete db;
 }
 
-Status ReplicationMaster::Open(ReplicationMaster* master, DB* _db, const int _port) {
+Status ReplicationMaster::Open(ReplicationMaster** master, DB* _db,
+                               int _port) {
   if(!_db) return Status::NotFound("DB must be opened");
 
-  master = new ReplicationMaster(_db, _port);
-  return master->StartReplication();
+  *master = new ReplicationMaster(_db, _port);
+  return (*master)->StartReplication();
 }
     
 Status ReplicationMaster::StartReplication() {

@@ -23,25 +23,20 @@
 
 namespace rocksdb {
 
-Status ReplicationSlave::Open(ReplicationSlave* slave, DB* _db,
-                              std::string _master_host, int _port) {
-  if(!_db) return Status::NotFound("DB must e opened");
+Status ReplicationSlave::Open(ReplicationSlave** slave, DB* _db,
+                              const std::string& _master_host,
+                              const int _port) {
+  if(!_db) return Status::NotFound("DB must be opened");
 
-  slave = new ReplicationSlave(_db, _master_host, _port);
+  *slave = new ReplicationSlave(_db, _master_host, _port);
   return Status::OK();
-}
-
-ReplicationSlave::ReplicationSlave(DB *_db, std::string _master_host,
-                                   int _port) {
-  db          = _db;
-  master_host = _master_host;  
-  port        = _port;
-  env         = db->GetEnv();
 }
 
 inline Status ReplicationSlave::DisableFileDeletions(SessionID& session_id) {
   try {
+    std::cout << "client:" << client << std::endl;
     client->DisableFileDeletions(session_id);
+    std::cout << "client:" << client << std::endl;
   } catch (const ReplicationError& e) {
     return Status::ShutdownInProgress(e.why);
   }
@@ -140,17 +135,23 @@ Status ReplicationSlave::GetFile(SessionID& session_id,
 Status ReplicationSlave::CreateNewReplication(bool flush_before_replication) {
   Status s;
   SessionID session_id;
+
+  std::cout << "***CreateNewReplication" << std::endl;
+  std::cout << "****DisableFileDeletions" << std::endl;
   s = DisableFileDeletions(session_id);
   if (!s.ok()) {
     return s;
   }
+  std::cout << "***SessionID" << session_id << std::endl;
   
+  std::cout << "****GetLiveFiles" << std::endl;
   std::vector<ReplicationFileInfo> file_info;
   s = GetLiveFiles(file_info, session_id, flush_before_replication);
   if (!s.ok()) {
     return s;
   }
 
+  std::cout << "****GetFile" << std::endl;
   // copy files from master
   for(auto iter = file_info.begin();
       iter != file_info.end();
@@ -239,13 +240,15 @@ Status ReplicationSlave::StartReplication(int sync_interval,
                                           bool flush_before_replication) {
   using namespace apache::thrift;
   using boost::shared_ptr;
-
   shared_ptr<transport::TTransport> 
       socket(new transport::TSocket(master_host, port));
+
   shared_ptr<transport::TTransport> 
       _transport(new transport::TBufferedTransport(socket));
+
   shared_ptr<protocol::TProtocol>
       protocol(new protocol::TBinaryProtocol(transport));
+
   client = new ReplicationClient(protocol);
   transport = _transport;
   running.store(true);
@@ -276,7 +279,30 @@ Status ReplicationSlave::StopReplication() {
   transport->close();
   return Status::OK();
 }
-    
+
+ReplicationSlave::ReplicationSlave()
+    : db(nullptr),
+      env(nullptr),
+      port(0),
+      master_host(""),
+      running(true),
+      client(nullptr),
+      transfer_data_size(1048576) {
+  std::cout << "\n\nOH MY ...\n\n" << std::endl;
+  std::cout << "***transfer_data_size:" << transfer_data_size << std::endl;
+}
+
+ReplicationSlave::ReplicationSlave(DB* _db, const std::string& _master_host,
+                                   const int _port)
+    : db(_db),
+      env(db->GetEnv()),
+      port(_port),
+      master_host(_master_host),
+      transfer_data_size(1048576) {
+  std::cout << "\n\nYES YES\n\n" << std::endl;
+  std::cout << "***transfer_data_size:" << transfer_data_size << std::endl;
+}
+
 ReplicationSlave::~ReplicationSlave() {
   StopReplication();
   delete db;

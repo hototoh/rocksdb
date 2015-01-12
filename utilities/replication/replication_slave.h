@@ -19,14 +19,14 @@ namespace rocksdb {
 class ReplicationSlave {
  private:
   DB* db;
-  Env* env; 
+  Env* env;
   int port;
   std::string master_host;
   std::atomic_bool running;
   std::future<Status> sync_result;
   boost::shared_ptr<apache::thrift::transport::TTransport> transport;
   ReplicationClient* client;
-  const int64_t transfer_data_size = 1048576; // 2 ** 20
+  const int64_t transfer_data_size; // 2 ** 20
 
   inline Status DisableFileDeletions(SessionID& session_id);
   inline Status EnableFileDeletions(SessionID& session_id, 
@@ -44,10 +44,12 @@ class ReplicationSlave {
                             int64_t transfer_data_size);
    
  public:
-  static Status Open(ReplicationSlave* slave, DB* _db,
-                     std::string _master_host, int _port);
-  ReplicationSlave() { }
-  ReplicationSlave(DB* _db, std::string _master_host, int _port);
+  static Status Open(ReplicationSlave** slave, DB* _db,
+                     const std::string& _master_host,
+                     const int _port);
+
+  ReplicationSlave();
+  ReplicationSlave(DB* _db, const std::string& _master_host, const int _port);
   ~ReplicationSlave();
   Status PeriodicalSync(int sync_interval);
   Status StopReplication();

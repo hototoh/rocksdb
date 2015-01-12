@@ -10,6 +10,7 @@
 #include "util/testharness.h"
 #include "util/auto_roll_logger.h"
 #include "rocksdb/db.h"
+#include "rocksdb/status.h"
 #include "rocksdb/transaction_log.h"
 
 #include "rocksdb/utilities/backupable_db.h"
@@ -65,11 +66,16 @@ static void AssertEmpty(DB* db, int from, int to) {
 
 class ReplicationDBTest {
  public:
-  ReplicationDBTest() {
-    // setup files
+  ReplicationDBTest()
+      : 
+      master_port(8889),
+      master_host("localhost") {
+      // setup files
     master_db_name = test::TmpDir() + "/replication_master";
     slave_db_name  = test::TmpDir() + "/replication_slave";
-    
+    std::cout << "master_db_name:" << master_db_name << std::endl;
+    std::cout << "slave_db_name:"  << slave_db_name  << std::endl;
+  
     // setup envs
     env = Env::Default();
     //test_master_env.reset(new TestEnv(env));
@@ -80,12 +86,12 @@ class ReplicationDBTest {
     master_options.create_if_missing = true;
     master_options.paranoid_checks = true;
     master_options.write_buffer_size = 1 << 17;
-    master_options.env = test_master_env.get();
+    master_options.env = env;
     master_options.wal_dir = master_db_name;
     slave_options.create_if_missing = true;
     slave_options.paranoid_checks = true;
     slave_options.write_buffer_size = 1 << 17;
-    slave_options.env = test_slave_env.get();
+    slave_options.env = env;
     slave_options.wal_dir = slave_db_name;
 
     // setup replication db options
@@ -100,16 +106,17 @@ class ReplicationDBTest {
     DestroyDB(slave_db_name, Options());
   }
   
-  DB* OpenDB(Options options, std::string dbname) {
+  DB* OpenDB(const Options options,const std::string& dbname) {
     DB* db;
     ASSERT_OK(DB::Open(options, dbname, &db));
     return db;
   }
 
   void OpenMasterDB() {
-    DB* db = OpenDB(master_options, master_db_name);   
+    DB* db = OpenDB(master_options, master_db_name);
     master_db.reset(db);
-    ASSERT_OK(ReplicationMaster::Open(master, db, master_port));
+    ASSERT_OK(ReplicationMaster::Open(&master, db, 
+                                      ReplicationDBTest::master_port));
   }
 
   void CloseMasterDB() {
@@ -121,7 +128,8 @@ class ReplicationDBTest {
   void OpenSlaveDB() {
     DB* db = OpenDB(slave_options, slave_db_name);
     slave_db.reset(db);
-    ASSERT_OK(ReplicationSlave::Open(slave, db, "localhost", master_port));
+    ASSERT_OK(ReplicationSlave::Open(&slave, db, ReplicationDBTest::master_host,
+                                     ReplicationDBTest::master_port));
   }
 
   void CloseSlaveDB() {
@@ -177,8 +185,8 @@ class ReplicationDBTest {
   unique_ptr<DB> slave_db;
 
   // replication instance
-  ReplicationMaster *master;
-  ReplicationSlave  *slave;
+  ReplicationMaster* master;
+  ReplicationSlave*  slave;
 
   // envs
   Env* env;
@@ -191,8 +199,8 @@ class ReplicationDBTest {
   std::shared_ptr<Logger> logger;
 
   // settings => TODO ReplicationDBOptions
-  const int master_port = 8889;
-
+  const int master_port;
+  const std::string master_host;
 }; // ReplicationDBTest
 
 // open DB, write, replication, write, replication
@@ -203,11 +211,8 @@ TEST(ReplicationDBTest, OfflineLocalWriteTest) {
   const int not_exist_key = key_iteration * 5;
   time_t now = time(NULL);
   Random rnd((uint32_t) now);
-  
-  // delelte old data
-  DestroyMasterDB();
-  DestroySlaveDB();
 
+  std::cout << "*Start Iteration" << std::endl;
   // first iter -- flush before replication
   // second iter -- don't flush before replication
   for (int iter = 0; iter < 2; ++iter) {
@@ -223,10 +228,13 @@ TEST(ReplicationDBTest, OfflineLocalWriteTest) {
       OpenMasterDB();
       OpenSlaveDB();
       // 1.
+      std::cout << "**Fill Master DB" << std::endl;
       FillDB(master_db.get(), 0, fill_up_to);
       // 2.
+      std::cout << "**SlaveStartReplication" << std::endl;
       ASSERT_OK(SlaveStartReplication(sync_interval, iter == 0));
       // 3.
+      std::cout << "**Fill Master DB" << std::endl;
       FillDB(master_db.get(), fill_up_to, max_key);
       // 4. wait a little for sync
       usleep(sync_interval * 10);

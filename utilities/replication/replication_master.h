@@ -39,7 +39,7 @@ class ReplicationHandler : virtual public ReplicationIf {
   
   
 
-  bool NewFileDeletionEntry();
+  bool NewFileDeletionEntry(SessionID& session_id);
   bool UpdateFileDeletionEntry(const SessionID& sessionId);
   bool DeleteFileDeletionEntry(const SessionID& sessionId);
 
@@ -70,7 +70,8 @@ class ReplicationMaster {
   apache::thrift::server::TThreadPoolServer* server;  
   
  public:
-  static Status Open(ReplicationMaster* master, DB* _db, const int _port);
+  static Status Open(ReplicationMaster** master, DB* _db,
+                     int _port);
   ReplicationMaster() {}
   ReplicationMaster(DB* _db, int _port);
   ~ReplicationMaster();
