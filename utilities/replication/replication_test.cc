@@ -68,6 +68,8 @@ class ReplicationDBTest {
  public:
   ReplicationDBTest()
       : 
+      master(),
+      slave(),
       master_port(8889),
       master_host("localhost") {
       // setup files
@@ -114,9 +116,12 @@ class ReplicationDBTest {
 
   void OpenMasterDB() {
     DB* db = OpenDB(master_options, master_db_name);
+    std::cout << "**OpenDB()" << std::endl;
     master_db.reset(db);
+    std::cout << "**set" << std::endl;
     ASSERT_OK(ReplicationMaster::Open(&master, db, 
                                       ReplicationDBTest::master_port));
+    std::cout << "**ASSERT_OKD" << std::endl;
   }
 
   void CloseMasterDB() {
@@ -212,7 +217,7 @@ TEST(ReplicationDBTest, OfflineLocalWriteTest) {
   time_t now = time(NULL);
   Random rnd((uint32_t) now);
 
-  std::cout << "*Start Iteration" << std::endl;
+  std::cout << "Start Iteration" << std::endl;
   // first iter -- flush before replication
   // second iter -- don't flush before replication
   for (int iter = 0; iter < 2; ++iter) {
@@ -222,10 +227,12 @@ TEST(ReplicationDBTest, OfflineLocalWriteTest) {
     // 3. insert new data in master
     // 4. close master and slave
     // 5. compare master and slave db
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; ++i) {
       // in last iteration, put smaller amount of data,
       int fill_up_to = std::min(key_iteration * (i+1), max_key);
+      std::cout << "**OpenMasterDB()" << std::endl;
       OpenMasterDB();
+      std::cout << "**OpenSlaveDB()" << std::endl;
       OpenSlaveDB();
       // 1.
       std::cout << "**Fill Master DB" << std::endl;

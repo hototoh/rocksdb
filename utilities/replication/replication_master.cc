@@ -88,7 +88,7 @@ bool ReplicationHandler::UpdateFileDeletionEntry(const SessionID& session_id) {
   return true;
 }
 
-bool ReplicationHandler::DeleteFileDeletionEntry(const SessionID& session_id) {
+bool ReplicationHandler::DeleteFileDeletionEntry(const SessionID& session_id) {  
   auto iter = file_deletion_lock_table.find(session_id);
   if (iter == file_deletion_lock_table.end()) {
     return false;
@@ -127,7 +127,7 @@ bool ReplicationHandler::EnableFileDeletions(const SessionID& session_id,
   }
 
   // Even if Fail to delete the entry from file_deletion_lock_table,
-  // it does not matter.
+  // Ignore this bool
   bool res = DeleteFileDeletionEntry(session_id);
   return true;
 }

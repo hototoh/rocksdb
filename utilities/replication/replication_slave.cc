@@ -244,13 +244,12 @@ Status ReplicationSlave::StartReplication(int sync_interval,
       socket(new transport::TSocket(master_host, port));
 
   shared_ptr<transport::TTransport> 
-      _transport(new transport::TBufferedTransport(socket));
-
+      transport_(new transport::TBufferedTransport(socket));
   shared_ptr<protocol::TProtocol>
-      protocol(new protocol::TBinaryProtocol(transport));
-
+      protocol(new protocol::TBinaryProtocol(transport_));
+  
   client = new ReplicationClient(protocol);
-  transport = _transport;
+  transport = transport_; 
   running.store(true);
 
   try {
@@ -269,6 +268,7 @@ Status ReplicationSlave::StartReplication(int sync_interval,
                              this,
                              sync_interval);
   } catch (const TException& tx) {
+
     return Status::ShutdownInProgress("could not connect to master db");
   }
   return Status::OK();
@@ -288,8 +288,6 @@ ReplicationSlave::ReplicationSlave()
       running(true),
       client(nullptr),
       transfer_data_size(1048576) {
-  std::cout << "\n\nOH MY ...\n\n" << std::endl;
-  std::cout << "***transfer_data_size:" << transfer_data_size << std::endl;
 }
 
 ReplicationSlave::ReplicationSlave(DB* _db, const std::string& _master_host,
@@ -298,9 +296,8 @@ ReplicationSlave::ReplicationSlave(DB* _db, const std::string& _master_host,
       env(db->GetEnv()),
       port(_port),
       master_host(_master_host),
+      client(),
       transfer_data_size(1048576) {
-  std::cout << "\n\nYES YES\n\n" << std::endl;
-  std::cout << "***transfer_data_size:" << transfer_data_size << std::endl;
 }
 
 ReplicationSlave::~ReplicationSlave() {

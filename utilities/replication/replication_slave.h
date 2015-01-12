@@ -47,7 +47,6 @@ class ReplicationSlave {
   static Status Open(ReplicationSlave** slave, DB* _db,
                      const std::string& _master_host,
                      const int _port);
-
   ReplicationSlave();
   ReplicationSlave(DB* _db, const std::string& _master_host, const int _port);
   ~ReplicationSlave();
